@@ -1,0 +1,10 @@
+# a comment
+l := [
+    "a": "apple",
+    "b": "bat"
+]
+
+"aa" >> "ick" >> "foo"
+
+
+1 < 3 && "a" < "b"

@@ -1,0 +1,28 @@
+                               # comment
+a := 2                         # comment
+                               # comment
+[ a, 
+    x:y ]                     # comment
+                               # comment
+[1, "a": "apple", true, x: y]  # comment
+                               # comment
+"foo": "bar"                   # comment
+4                              # comment
+                               # comment
+1 + 2 - 3 * 4 / 
+5 % 6          # comment
+                               # comment
+a := b += c                    # comment
+                               # comment
+a < b <= 
+    # intermediate comment 
+c >= d > e            # comment
+a == 
+b != c                    # comment
+                               # comment
+2 + -2                         # comment
+                               # comment
+true == !false                 # comment
+                               # comment
+alpha >> beta >>>       
+gamma                          # comment
