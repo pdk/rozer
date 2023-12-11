@@ -42,7 +42,9 @@ func main() {
 	// repr.Println(program)
 	fmt.Printf("%s", program.String())
 
-	executable, errors := program.Compile()
+	globalTypeMap := TypeMap{}
+
+	executable, errors := program.Compile(globalTypeMap)
 
 	if errors.Len() > 0 {
 		log.Printf("errors found during compilation:")
@@ -52,5 +54,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	executable.Execute(nil)
+	execEnv := ExecutionEnvironment{}
+	executable.Execute(execEnv)
 }

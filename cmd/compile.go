@@ -10,19 +10,23 @@ type ExecutionResult any
 
 type Executable interface {
 	Execute(ExecutionEnvironment) ExecutionResult
-	Type() Type
+	Type(TypeMap) Type
 }
+
+type TypeMap map[string]Type
 
 type Type uint
 
 const (
 	TypeUnknown Type = iota
+	TypeIdentifier
 	TypeBool
 	TypeFloat
 	TypeInteger
 	TypeString
 	TypeList
 	TypeKeyValue
+	TypeCount
 )
 
 func (t Type) String() string {
@@ -41,10 +45,88 @@ func (t Type) String() string {
 		return "list"
 	case TypeKeyValue:
 		return "keyvalue"
+	case TypeIdentifier:
+		return "identifier"
 	default:
 		return fmt.Sprintf("unknown type %d", t)
 	}
 }
+
+func TypeOf(x any) Type {
+	switch x.(type) {
+	case BoolValue:
+		return TypeBool
+	case FloatValue:
+		return TypeFloat
+	case IntegerValue:
+		return TypeInteger
+	case StringValue:
+		return TypeString
+	case ListValue:
+		return TypeList
+	case KeyValueResult:
+		return TypeKeyValue
+	case IdentifierValue:
+		return TypeIdentifier
+	default:
+		return TypeUnknown
+	}
+}
+
+var (
+	PlusOpMap = [TypeCount]func(any, any) any{
+		TypeFloat:   func(a, b any) any { return FloatValue(a.(FloatValue) + b.(FloatValue)) },
+		TypeInteger: func(a, b any) any { return IntegerValue(a.(IntegerValue) + b.(IntegerValue)) },
+		TypeString:  func(a, b any) any { return StringValue(a.(StringValue) + b.(StringValue)) },
+	}
+	MinusOpMap = [TypeCount]func(any, any) any{
+		TypeFloat:   func(a, b any) any { return FloatValue(a.(FloatValue) - b.(FloatValue)) },
+		TypeInteger: func(a, b any) any { return IntegerValue(a.(IntegerValue) - b.(IntegerValue)) },
+	}
+	MultOpMap = [TypeCount]func(any, any) any{
+		TypeFloat:   func(a, b any) any { return FloatValue(a.(FloatValue) * b.(FloatValue)) },
+		TypeInteger: func(a, b any) any { return IntegerValue(a.(IntegerValue) * b.(IntegerValue)) },
+	}
+	DivOpMap = [TypeCount]func(any, any) any{
+		TypeFloat:   func(a, b any) any { return FloatValue(a.(FloatValue) / b.(FloatValue)) },
+		TypeInteger: func(a, b any) any { return IntegerValue(a.(IntegerValue) / b.(IntegerValue)) },
+	}
+	ModuloOpMap = [TypeCount]func(any, any) any{
+		TypeInteger: func(a, b any) any { return IntegerValue(a.(IntegerValue) % b.(IntegerValue)) },
+	}
+	EqualOpMap = [TypeCount]func(any, any) BoolValue{
+		TypeBool:    func(a, b any) BoolValue { return BoolValue(a.(BoolValue) == b.(BoolValue)) },
+		TypeFloat:   func(a, b any) BoolValue { return BoolValue(a.(FloatValue) == b.(FloatValue)) },
+		TypeInteger: func(a, b any) BoolValue { return BoolValue(a.(IntegerValue) == b.(IntegerValue)) },
+		TypeString:  func(a, b any) BoolValue { return BoolValue(a.(StringValue) == b.(StringValue)) },
+	}
+	NotEqualOpMap = [TypeCount]func(any, any) BoolValue{
+		TypeBool:    func(a, b any) BoolValue { return BoolValue(a.(BoolValue) != b.(BoolValue)) },
+		TypeFloat:   func(a, b any) BoolValue { return BoolValue(a.(FloatValue) != b.(FloatValue)) },
+		TypeInteger: func(a, b any) BoolValue { return BoolValue(a.(IntegerValue) != b.(IntegerValue)) },
+		TypeString:  func(a, b any) BoolValue { return BoolValue(a.(StringValue) != b.(StringValue)) },
+	}
+	LessThanOpMap = [TypeCount]func(any, any) BoolValue{
+		TypeFloat:   func(a, b any) BoolValue { return BoolValue(a.(FloatValue) < b.(FloatValue)) },
+		TypeInteger: func(a, b any) BoolValue { return BoolValue(a.(IntegerValue) < b.(IntegerValue)) },
+		TypeString:  func(a, b any) BoolValue { return BoolValue(a.(StringValue) < b.(StringValue)) },
+	}
+	LessThanOrEqualOpMap = [TypeCount]func(any, any) BoolValue{
+		TypeFloat:   func(a, b any) BoolValue { return BoolValue(a.(FloatValue) <= b.(FloatValue)) },
+		TypeInteger: func(a, b any) BoolValue { return BoolValue(a.(IntegerValue) <= b.(IntegerValue)) },
+		TypeString:  func(a, b any) BoolValue { return BoolValue(a.(StringValue) <= b.(StringValue)) },
+	}
+	GreaterThanOpMap = [TypeCount]func(any, any) BoolValue{
+		TypeFloat:   func(a, b any) BoolValue { return BoolValue(a.(FloatValue) > b.(FloatValue)) },
+		TypeInteger: func(a, b any) BoolValue { return BoolValue(a.(IntegerValue) > b.(IntegerValue)) },
+		TypeString:  func(a, b any) BoolValue { return BoolValue(a.(StringValue) > b.(StringValue)) },
+	}
+	GreaterThanOrEqualOpMap = [TypeCount]func(any, any) BoolValue{
+		TypeFloat:   func(a, b any) BoolValue { return BoolValue(a.(FloatValue) >= b.(FloatValue)) },
+		TypeInteger: func(a, b any) BoolValue { return BoolValue(a.(IntegerValue) >= b.(IntegerValue)) },
+		TypeString:  func(a, b any) BoolValue { return BoolValue(a.(StringValue) >= b.(StringValue)) },
+	}
+)
 
 type CompileErrors struct {
 	errs *[]error
@@ -99,7 +181,7 @@ func (b Block) Execute(ee ExecutionEnvironment) ExecutionResult {
 	return lastResult
 }
 
-func (b Block) Type() Type {
+func (b Block) Type(typeMap TypeMap) Type {
 	return TypeUnknown
 }
 
@@ -110,7 +192,7 @@ func (b BoolValue) Execute(ee ExecutionEnvironment) ExecutionResult {
 	return b
 }
 
-func (b BoolValue) Type() Type {
+func (b BoolValue) Type(typeMap TypeMap) Type {
 	return TypeBool
 }
 
@@ -121,7 +203,7 @@ func (f FloatValue) Execute(ee ExecutionEnvironment) ExecutionResult {
 	return f
 }
 
-func (f FloatValue) Type() Type {
+func (f FloatValue) Type(typeMap TypeMap) Type {
 	return TypeFloat
 }
 
@@ -132,7 +214,7 @@ func (i IntegerValue) Execute(ee ExecutionEnvironment) ExecutionResult {
 	return i
 }
 
-func (i IntegerValue) Type() Type {
+func (i IntegerValue) Type(typeMap TypeMap) Type {
 	return TypeInteger
 }
 
@@ -143,8 +225,26 @@ func (s StringValue) Execute(ee ExecutionEnvironment) ExecutionResult {
 	return s
 }
 
-func (s StringValue) Type() Type {
+func (s StringValue) Type(typeMap TypeMap) Type {
 	return TypeString
+}
+
+type IdentifierValue struct {
+	Base  *Base
+	Value string
+}
+
+func (i IdentifierValue) Execute(ee ExecutionEnvironment) ExecutionResult {
+	// log.Printf("identifier: %s", i)
+	v, ok := ee[i.Value]
+	if !ok {
+		log.Fatalf("accessing variable %s before assignment at %s", i.Value, i.Base.Pos)
+	}
+	return v
+}
+
+func (i IdentifierValue) Type(typeMap TypeMap) Type {
+	return typeMap[i.Value]
 }
 
 type ListValue []Executable
@@ -154,11 +254,11 @@ func (l ListValue) Execute(ee ExecutionEnvironment) ExecutionResult {
 	return l
 }
 
-func (l ListValue) Type() Type {
+func (l ListValue) Type(typeMap TypeMap) Type {
 	return TypeList
 }
 
-func (b Base) Compile() (Executable, CompileErrors) {
+func (b *Base) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 	switch {
 	case b.Bool != nil:
 		switch *b.Bool {
@@ -174,13 +274,13 @@ func (b Base) Compile() (Executable, CompileErrors) {
 	case b.Integer != nil:
 		return IntegerValue(*b.Integer), NoErrors
 	case b.Ident != nil:
-		return StringValue(*b.Ident), NoErrors // TODO lookup in environment
+		return IdentifierValue{b, *b.Ident}, NoErrors
 	case b.StringValue != nil:
 		return StringValue(*b.StringValue), NoErrors
 	case b.Subexpression != nil:
-		return b.Subexpression.Compile()
+		return b.Subexpression.Compile(typeMap)
 	case b.List != nil:
-		return b.List.Compile()
+		return b.List.Compile(typeMap)
 	}
 
 	return nil, NewError(fmt.Errorf("cannot compile base %#v", b))
@@ -195,7 +295,7 @@ func (uen UnaryExecuteNot) Execute(ee ExecutionEnvironment) ExecutionResult {
 	return BoolValue(!uen.Operand.Execute(ee).(BoolValue))
 }
 
-func (uen UnaryExecuteNot) Type() Type {
+func (uen UnaryExecuteNot) Type(typeMap TypeMap) Type {
 	return TypeBool
 }
 
@@ -208,7 +308,7 @@ func (uemf UnaryExecuteSubtractFloat) Execute(ee ExecutionEnvironment) Execution
 	return FloatValue(-uemf.Operand.Execute(ee).(FloatValue))
 }
 
-func (uemf UnaryExecuteSubtractFloat) Type() Type {
+func (uemf UnaryExecuteSubtractFloat) Type(typeMap TypeMap) Type {
 	return TypeFloat
 }
 
@@ -221,30 +321,30 @@ func (uemi UnaryExecuteMinusInteger) Execute(ee ExecutionEnvironment) ExecutionR
 	return IntegerValue(-uemi.Operand.Execute(ee).(IntegerValue))
 }
 
-func (uemi UnaryExecuteMinusInteger) Type() Type {
+func (uemi UnaryExecuteMinusInteger) Type(typeMap TypeMap) Type {
 	return TypeInteger
 }
 
-func (u *Unary) Compile() (Executable, CompileErrors) {
+func (u *Unary) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 
 	if u.Base != nil {
-		return u.Base.Compile()
+		return u.Base.Compile(typeMap)
 	}
 
 	if u.Unary == nil {
 		return nil, NewError(fmt.Errorf("cannot compile unary %s", u))
 	}
 
-	operand, errs := u.Unary.Compile()
+	operand, errs := u.Unary.Compile(typeMap)
 
 	switch *u.Op {
 	case "!":
-		if operand.Type() != TypeBool {
+		if operand.Type(typeMap) != TypeBool {
 			errs.Append(fmt.Errorf("invalid unary operation %s at %s", *u.Op, u.Pos))
 		}
 		return UnaryExecuteNot{u, operand}, errs
 	case "-":
-		switch operand.Type() {
+		switch operand.Type(typeMap) {
 		case TypeFloat:
 			return UnaryExecuteSubtractFloat{u, operand}, errs
 		case TypeInteger:
@@ -258,150 +358,68 @@ func (u *Unary) Compile() (Executable, CompileErrors) {
 	return nil, errs.Append(fmt.Errorf("invalid unary operation %s at %s", *u.Op, u.Pos))
 }
 
-type MultiplyFloat struct {
-	Multiplication *Multiplication
-	Left, Right    Executable
-}
-
-func (mf MultiplyFloat) Execute(ee ExecutionEnvironment) ExecutionResult {
-	return FloatValue(mf.Left.Execute(ee).(FloatValue) * mf.Right.Execute(ee).(FloatValue))
-}
-
-func (mf MultiplyFloat) Type() Type {
-	return TypeFloat
-}
-
-type MultiplyInteger struct {
-	Multiplication *Multiplication
-	Left, Right    Executable
-}
-
-func (mi MultiplyInteger) Execute(ee ExecutionEnvironment) ExecutionResult {
-	return IntegerValue(mi.Left.Execute(ee).(IntegerValue) * mi.Right.Execute(ee).(IntegerValue))
-}
-
-func (mi MultiplyInteger) Type() Type {
-	return TypeInteger
-}
-
-type DivideFloat struct {
-	Multiplication *Multiplication
-	Left, Right    Executable
-}
-
-func (df DivideFloat) Execute(ee ExecutionEnvironment) ExecutionResult {
-	left := df.Left.Execute(ee).(FloatValue)
-	right := df.Right.Execute(ee).(FloatValue)
-	if right == 0.0 {
-		log.Printf("float divide by zero at %s (returning 0.0)", df.Multiplication.Pos)
-		return FloatValue(0.0)
-	}
-	return FloatValue(left / right)
-}
-
-func (df DivideFloat) Type() Type {
-	return TypeFloat
-}
-
-type DivideInteger struct {
-	Multiplication *Multiplication
-	Left, Right    Executable
-}
-
-func (di DivideInteger) Execute(ee ExecutionEnvironment) ExecutionResult {
-	left := di.Left.Execute(ee).(IntegerValue)
-	right := di.Right.Execute(ee).(IntegerValue)
-	if right == 0 {
-		log.Printf("integer divide by zero at %s (returning 0)", di.Multiplication.Pos)
-		return IntegerValue(0.0)
-	}
-	return IntegerValue(left / right)
-}
-
-func (di DivideInteger) Type() Type {
-	return TypeInteger
-}
-
-type ModuloInteger struct {
-	Multiplication *Multiplication
-	Left, Right    Executable
-}
-
-func (mi ModuloInteger) Execute(ee ExecutionEnvironment) ExecutionResult {
-	return IntegerValue(mi.Left.Execute(ee).(IntegerValue) % mi.Right.Execute(ee).(IntegerValue))
-}
-
-func (mi ModuloInteger) Type() Type {
-	return TypeInteger
-}
-
-func (m *Multiplication) Compile() (Executable, CompileErrors) {
+func (m *Multiplication) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 	var errs CompileErrors
 
-	ex := errs.Collect(m.Unary.Compile())
+	ex := errs.Collect(m.Unary.Compile(typeMap))
 	if len(m.Operations) == 0 {
 		return ex, errs
 	}
 
 	operands := []Executable{}
 	for _, opExpr := range m.Operations {
-		operand := errs.Collect(opExpr.Operand.Compile())
-		if ex.Type() != operand.Type() {
-			errs.Append(fmt.Errorf("type mismatch %s for %s at %s", ex.Type(), operand.Type(), m.Pos))
+		operand := errs.Collect(opExpr.Operand.Compile(typeMap))
+		if ex.Type(typeMap) != operand.Type(typeMap) {
+			errs.Append(fmt.Errorf("type mismatch %s for %s at %s", ex.Type(typeMap), operand.Type(typeMap), m.Pos))
 		}
 		operands = append(operands, operand)
 	}
 
-	switch ex.Type() {
-	case TypeFloat:
-		for i, operand := range operands {
-			switch m.Operations[i].Op {
-			case "*":
-				ex = MultiplyFloat{m, ex, operand}
-			case "/":
-				ex = DivideFloat{m, ex, operand}
-			default:
-				errs.Append(fmt.Errorf("invalid type %s for *, /, %% at %s", ex.Type(), m.Pos))
-				return nil, errs
-			}
-		}
+	multOp := MultOpMap[ex.Type(typeMap)]
+	divOp := DivOpMap[ex.Type(typeMap)]
+	moduloOp := ModuloOpMap[ex.Type(typeMap)]
 
-	case TypeInteger:
-		for i, operand := range operands {
-			switch m.Operations[i].Op {
-			case "*":
-				ex = MultiplyInteger{m, ex, operand}
-			case "/":
-				ex = DivideInteger{m, ex, operand}
-			case "%":
-				ex = ModuloInteger{m, ex, operand}
-			default:
-				errs.Append(fmt.Errorf("invalid type %s for *, /, %% at %s", ex.Type(), m.Pos))
-				return nil, errs
+	for i, operand := range operands {
+		switch m.Operations[i].Op {
+		case "*":
+			if multOp == nil {
+				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", m.Operations[i].Op, ex.Type(typeMap), m.Pos))
+				continue
 			}
+			ex = BinaryOperation{multOp, ex, operand, ex.Type(typeMap)}
+		case "/":
+			if divOp == nil {
+				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", m.Operations[i].Op, ex.Type(typeMap), m.Pos))
+				continue
+			}
+			ex = BinaryOperation{divOp, ex, operand, ex.Type(typeMap)}
+		case "%":
+			if moduloOp == nil {
+				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", m.Operations[i].Op, ex.Type(typeMap), m.Pos))
+				continue
+			}
+			ex = BinaryOperation{moduloOp, ex, operand, ex.Type(typeMap)}
+		default:
+			errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", m.Operations[i].Op, ex.Type(typeMap), m.Pos))
 		}
-
-	default:
-		errs.Append(fmt.Errorf("invalid type %s for *, /, %% at %s", ex.Type(), m.Pos))
-		return nil, errs
 	}
 
 	return ex, errs
 }
 
-func (kv *KeyValue) Compile() (Executable, CompileErrors) {
+func (kv *KeyValue) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 	var errs CompileErrors
 
-	ex := errs.Collect(kv.Addition.Compile())
+	ex := errs.Collect(kv.Addition.Compile(typeMap))
 	if kv.RightValue == nil {
 		return ex, errs
 	}
 
-	if ex.Type() != TypeString {
-		errs.Append(fmt.Errorf("invalid type %s for key (should be string) at %s", ex.Type(), kv.Pos))
+	if ex.Type(typeMap) != TypeString {
+		errs.Append(fmt.Errorf("invalid type %s for key (should be string) at %s", ex.Type(typeMap), kv.Pos))
 	}
 
-	rex := errs.Collect(kv.RightValue.Compile())
+	rex := errs.Collect(kv.RightValue.Compile(typeMap))
 	return KeyValueExecute{kv, ex, rex}, errs
 }
 
@@ -421,47 +439,41 @@ func (kve KeyValueExecute) Execute(ee ExecutionEnvironment) ExecutionResult {
 	return KeyValueResult{kve.Key.Execute(ee), kve.Value.Execute(ee)}
 }
 
-func (kve KeyValueExecute) Type() Type {
+func (kve KeyValueExecute) Type(typeMap TypeMap) Type {
 	return TypeKeyValue
 }
 
-func (l *Logical) Compile() (Executable, CompileErrors) {
+func (l *Logical) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 	var errs CompileErrors
 
-	ex := errs.Collect(l.Comparison.Compile())
+	ex := errs.Collect(l.Comparison.Compile(typeMap))
 	if len(l.Operations) == 0 {
 		return ex, errs
 	}
 
-	if ex.Type() != TypeBool {
-		errs.Append(fmt.Errorf("invalid type %s for logical operation at %s", ex.Type(), l.Pos))
+	if ex.Type(typeMap) != TypeBool {
+		errs.Append(fmt.Errorf("invalid type %s for logical operation at %s", ex.Type(typeMap), l.Pos))
 	}
 
 	operands := []Executable{}
 	for _, opExpr := range l.Operations {
-		operands = append(operands, errs.Collect(opExpr.Operand.Compile()))
+		operands = append(operands, errs.Collect(opExpr.Operand.Compile(typeMap)))
 	}
 
 	for i, operand := range operands {
-		switch ex.Type() {
+		switch ex.Type(typeMap) {
 		case TypeBool:
 			switch l.Operations[i].Op {
 			case "&&":
-				ex = Comparator{nil, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return bool(left.(BoolValue)) && bool(right.(BoolValue))
-					}}
+				ex = ShortCircuitAnd{ex, operand}
 			case "||":
-				ex = Comparator{nil, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return bool(left.(BoolValue)) || bool(right.(BoolValue))
-					}}
+				ex = ShortCircuitOr{ex, operand}
 			default:
-				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", l.Operations[i].Op, ex.Type(), l.Pos))
+				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", l.Operations[i].Op, ex.Type(typeMap), l.Pos))
 				return nil, errs
 			}
 		default:
-			errs.Append(fmt.Errorf("invalid type %s for logical operation at %s", ex.Type(), l.Pos))
+			errs.Append(fmt.Errorf("invalid type %s for logical operation at %s", ex.Type(typeMap), l.Pos))
 			return nil, errs
 		}
 	}
@@ -469,188 +481,79 @@ func (l *Logical) Compile() (Executable, CompileErrors) {
 	return ex, errs
 }
 
-func (c *Comparison) Compile() (Executable, CompileErrors) {
+func (c *Comparison) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 	var errs CompileErrors
 
-	ex := errs.Collect(c.KeyValue.Compile())
+	ex := errs.Collect(c.KeyValue.Compile(typeMap))
 	if len(c.Operations) == 0 {
 		return ex, errs
 	}
 
 	operands := []Executable{}
 	for _, opExpr := range c.Operations {
-		operands = append(operands, errs.Collect(opExpr.Operand.Compile()))
+		operands = append(operands, errs.Collect(opExpr.Operand.Compile(typeMap)))
 	}
 
 	for i, operand := range operands {
-
-		if ex.Type() != operand.Type() {
-			errs.Append(fmt.Errorf("type mismatch %s / %s at %s", ex.Type(), operand.Type(), c.Operations[i].Pos))
-		}
-
-		switch ex.Type() {
-		case TypeBool:
-			switch c.Operations[i].Op {
-			case "==":
-				ex = Comparator{c, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return left.(BoolValue) == right.(BoolValue)
-					}}
-			case "!=":
-				ex = Comparator{c, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return left.(BoolValue) != right.(BoolValue)
-					}}
+		switch c.Operations[i].Op {
+		case "==":
+			equalOp := EqualOpMap[ex.Type(typeMap)]
+			if equalOp == nil {
+				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", c.Operations[i].Op, ex.Type(typeMap), c.Pos))
+				continue
 			}
-
-		case TypeFloat:
-			switch c.Operations[i].Op {
-			case "<":
-				ex = Comparator{c, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return left.(FloatValue) < right.(FloatValue)
-					}}
-			case "<=":
-				ex = Comparator{c, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return left.(FloatValue) <= right.(FloatValue)
-					}}
-			case ">":
-				ex = Comparator{c, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return left.(FloatValue) > right.(FloatValue)
-					}}
-			case ">=":
-				ex = Comparator{c, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return left.(FloatValue) >= right.(FloatValue)
-					}}
-			case "==":
-				ex = Comparator{c, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return left.(FloatValue) == right.(FloatValue)
-					}}
-			case "!=":
-				ex = Comparator{c, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return left.(FloatValue) != right.(FloatValue)
-					}}
-			default:
-				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", c.Operations[i].Op, ex.Type(), c.Pos))
-				return nil, errs
+			ex = ComparisonOperation{equalOp, ex, operand}
+		case "!=":
+			notEqualOp := NotEqualOpMap[ex.Type(typeMap)]
+			if notEqualOp == nil {
+				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", c.Operations[i].Op, ex.Type(typeMap), c.Pos))
+				continue
 			}
-
-		case TypeInteger:
-			switch c.Operations[i].Op {
-			case "<":
-				ex = Comparator{c, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return left.(IntegerValue) < right.(IntegerValue)
-					}}
-			case "<=":
-				ex = Comparator{c, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return left.(IntegerValue) <= right.(IntegerValue)
-					}}
-			case ">":
-				ex = Comparator{c, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return left.(IntegerValue) > right.(IntegerValue)
-					}}
-			case ">=":
-				ex = Comparator{c, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return left.(IntegerValue) >= right.(IntegerValue)
-					}}
-			case "==":
-				ex = Comparator{c, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return left.(IntegerValue) == right.(IntegerValue)
-					}}
-			case "!=":
-				ex = Comparator{c, ex, operand,
-					func(left, right ExecutionResult) bool {
-						return left.(IntegerValue) != right.(IntegerValue)
-					}}
-			default:
-				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", c.Operations[i].Op, ex.Type(), c.Pos))
-				return nil, errs
+			ex = ComparisonOperation{notEqualOp, ex, operand}
+		case "<":
+			lessThanOp := LessThanOpMap[ex.Type(typeMap)]
+			if lessThanOp == nil {
+				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", c.Operations[i].Op, ex.Type(typeMap), c.Pos))
+				continue
 			}
-
-		case TypeString:
-			for i, operand := range operands {
-				switch c.Operations[i].Op {
-				case "<":
-					ex = Comparator{c, ex, operand,
-						func(left, right ExecutionResult) bool {
-							return left.(StringValue) < right.(StringValue)
-						},
-					}
-				case "<=":
-					ex = Comparator{c, ex, operand,
-						func(left, right ExecutionResult) bool {
-							return left.(StringValue) <= right.(StringValue)
-						}}
-				case ">":
-					ex = Comparator{c, ex, operand,
-						func(left, right ExecutionResult) bool {
-							return left.(StringValue) > right.(StringValue)
-						}}
-				case ">=":
-					ex = Comparator{c, ex, operand,
-						func(left, right ExecutionResult) bool {
-							return left.(StringValue) >= right.(StringValue)
-						}}
-				case "==":
-					ex = Comparator{c, ex, operand,
-						func(left, right ExecutionResult) bool {
-							return left.(StringValue) == right.(StringValue)
-						}}
-				case "!=":
-					ex = Comparator{c, ex, operand,
-						func(left, right ExecutionResult) bool {
-							return left.(StringValue) != right.(StringValue)
-						}}
-				default:
-					errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", c.Operations[i].Op, ex.Type(), c.Pos))
-					return nil, errs
-				}
+			ex = ComparisonOperation{lessThanOp, ex, operand}
+		case "<=":
+			lessThanOrEqualOp := LessThanOrEqualOpMap[ex.Type(typeMap)]
+			if lessThanOrEqualOp == nil {
+				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", c.Operations[i].Op, ex.Type(typeMap), c.Pos))
 			}
+			ex = ComparisonOperation{lessThanOrEqualOp, ex, operand}
+		case ">":
+			greaterThanOp := GreaterThanOpMap[ex.Type(typeMap)]
+			if greaterThanOp == nil {
+				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", c.Operations[i].Op, ex.Type(typeMap), c.Pos))
+			}
+			ex = ComparisonOperation{greaterThanOp, ex, operand}
+		case ">=":
+			greaterThanOrEqualOp := GreaterThanOrEqualOpMap[ex.Type(typeMap)]
+			if greaterThanOrEqualOp == nil {
+				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", c.Operations[i].Op, ex.Type(typeMap), c.Pos))
+			}
+			ex = ComparisonOperation{greaterThanOrEqualOp, ex, operand}
 		default:
-			errs.Append(fmt.Errorf("invalid type %s for comparison at %s", ex.Type(), c.Pos))
+			errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", c.Operations[i].Op, ex.Type(typeMap), c.Pos))
 		}
 	}
+
 	return ex, errs
 }
 
-type Comparator struct {
-	Comparison  *Comparison
-	Left, Right Executable
-	Executor    func(ExecutionResult, ExecutionResult) bool
-}
-
-func (c Comparator) Execute(ee ExecutionEnvironment) ExecutionResult {
-	left := c.Left.Execute(ee)
-	right := c.Right.Execute(ee)
-	result := c.Executor(left, right)
-	return BoolValue(result)
-}
-
-func (c Comparator) Type() Type {
-	return TypeBool
-}
-
-func (p *Pipe) Compile() (Executable, CompileErrors) {
+func (p *Pipe) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 	var errs CompileErrors
 
-	ex := errs.Collect(p.Logical.Compile())
+	ex := errs.Collect(p.Logical.Compile(typeMap))
 	if len(p.Operations) == 0 {
 		return ex, errs
 	}
 
 	pe := PipeExecute{p, []Executable{ex}}
 	for _, op := range p.Operations {
-		pe.Commands = append(pe.Commands, errs.Collect(op.Operand.Compile()))
+		pe.Commands = append(pe.Commands, errs.Collect(op.Operand.Compile(typeMap)))
 	}
 
 	return pe, errs
@@ -670,75 +573,109 @@ func (pe PipeExecute) Execute(ee ExecutionEnvironment) ExecutionResult {
 	return lastResult
 }
 
-func (pe PipeExecute) Type() Type {
+func (pe PipeExecute) Type(typeMap TypeMap) Type {
 	return TypeUnknown
 }
 
-func (a *Assignment) Compile() (Executable, CompileErrors) {
+func (a *Assignment) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 	var errs CompileErrors
 
-	ex := errs.Collect(a.Pipe.Compile())
-	if len(a.Operations) == 0 {
+	ex := errs.Collect(a.Pipe.Compile(typeMap))
+	if a.Operation == nil {
 		return ex, errs
 	}
 
-	operands := []Executable{}
-	for _, opExpr := range a.Operations {
-		operands = append(operands, errs.Collect(opExpr.Operand.Compile()))
+	operand := errs.Collect(a.Operation.Operand.Compile(typeMap))
+	if operand == nil {
+		return nil, errs
 	}
 
-	for i, operand := range operands {
-		switch a.Operations[i].Op {
-		case ":=":
-			ex = AssignmentExecute{a, ex, operand}
-		case "+=":
-			ex = PlusAssignmentExecute{a, ex, operand}
-		}
+	if !IsIdentifier(ex) {
+		errs.Append(fmt.Errorf("invalid left hand side %s for assignment at %s", ex.Type(typeMap), a.Pos))
+		return nil, errs
+	}
+	curType, ok := typeMap[ex.(IdentifierValue).Value]
+	if !ok {
+		typeMap[ex.(IdentifierValue).Value] = operand.Type(typeMap)
+	} else if curType != operand.Type(typeMap) {
+		errs.Append(fmt.Errorf("cannot change variable %s from type %s to type %s at %s",
+			ex.(IdentifierValue).Value, curType, operand.Type(typeMap), a.Pos))
+	}
+	switch a.Operation.Op {
+	case ":=":
+		ex = AssignmentExecute{a, ex.(IdentifierValue), operand}
+	case "+=":
+		ex = PlusAssignmentExecute{a, ex.(IdentifierValue), operand}
+	default:
+		errs.Append(fmt.Errorf("invalid assignment operator %s at %s", a.Operation.Op, a.Pos))
 	}
 
 	return ex, errs
 }
 
+func IsIdentifier(e Executable) bool {
+	_, ok := e.(IdentifierValue)
+	return ok
+}
+
 type AssignmentExecute struct {
 	Assignment *Assignment
-
-	Left, Right Executable
+	Left       IdentifierValue
+	Right      Executable
 }
 
 func (ae AssignmentExecute) Execute(ee ExecutionEnvironment) ExecutionResult {
-	// ee[ae.Left.Execute(ee).(StringValue)] = right
 	right := ae.Right.Execute(ee)
+
+	leftType := TypeOf(ee[ae.Left.Value])
+	if leftType != TypeUnknown && leftType != TypeOf(right) {
+		log.Fatalf("cannot change variable %s from type %s to type %s at %s", ae.Left.Value, leftType, TypeOf(right), ae.Assignment.Pos)
+	}
+
+	ee[ae.Left.Value] = right
 	return right
 }
 
-func (ae AssignmentExecute) Type() Type {
-	return ae.Right.Type()
+func (ae AssignmentExecute) Type(typeMap TypeMap) Type {
+	return ae.Right.Type(typeMap)
 }
 
 type PlusAssignmentExecute struct {
 	Assignment *Assignment
-
-	Left, Right Executable
+	Left       IdentifierValue
+	Right      Executable
 }
 
 func (pae PlusAssignmentExecute) Execute(ee ExecutionEnvironment) ExecutionResult {
-	// left := pae.Left.Execute(ee)
+	left := ee[pae.Left.Value]
 	right := pae.Right.Execute(ee)
-	return right
+
+	if TypeOf(left) != TypeOf(right) {
+		log.Fatalf("type mismatch %s/%s for += at %s", TypeOf(left), TypeOf(right), pae.Assignment.Pos)
+	}
+
+	plusOp := PlusOpMap[TypeOf(left)]
+	if plusOp == nil {
+		log.Fatalf("invalid type %s for += at %s", TypeOf(left), pae.Assignment.Pos)
+	}
+
+	newVal := plusOp(left, right)
+	ee[pae.Left.Value] = newVal
+	return newVal
 }
 
-func (pae PlusAssignmentExecute) Type() Type {
-	return pae.Right.Type()
+func (pae PlusAssignmentExecute) Type(typeMap TypeMap) Type {
+	return pae.Right.Type(typeMap)
 }
 
-func (l List) Compile() (Executable, CompileErrors) {
+func (l List) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 	log.Printf("compliling list")
 
 	var errs CompileErrors
 	var list ListExecute
 
 	for _, item := range l.Items {
-		list.Items = append(list.Items, errs.Collect(item.Compile()))
+		list.Items = append(list.Items, errs.Collect(item.Compile(typeMap)))
 	}
 
 	return list, errs
@@ -764,158 +701,129 @@ func (le ListExecute) Execute(ee ExecutionEnvironment) ExecutionResult {
 	return result
 }
 
-func (le ListExecute) Type() Type {
+func (le ListExecute) Type(typeMap TypeMap) Type {
 	return TypeList
 }
 
-func (e Expression) Compile() (Executable, CompileErrors) {
+func (e Expression) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 	var errs CompileErrors
 
 	if e.Assignment == nil {
 		return nil, errs.Append(fmt.Errorf("expression is empty at %s", e.Pos))
 	}
 
-	return e.Assignment.Compile()
+	return e.Assignment.Compile(typeMap)
 }
 
-func (p Program) Compile() (Executable, CompileErrors) {
+func (p Program) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 	var errs CompileErrors
 
 	block := Block{}
 
 	for _, c := range p.Commands {
 		if c != nil && c.Expression != nil {
-			e := errs.Collect(c.Expression.Compile())
+			e := errs.Collect(c.Expression.Compile(typeMap))
 			block.Commands = append(block.Commands, e)
 		}
 	}
 	return block, errs
 }
 
-func (a *Addition) Compile() (Executable, CompileErrors) {
+func (a *Addition) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 	var errs CompileErrors
 
-	ex := errs.Collect(a.Multiplication.Compile())
+	ex := errs.Collect(a.Multiplication.Compile(typeMap))
 	if len(a.Operations) == 0 {
 		return ex, errs
 	}
 
 	operands := []Executable{}
 	for _, opExpr := range a.Operations {
-		operand := errs.Collect(opExpr.Operand.Compile())
-		if ex.Type() != operand.Type() {
-			errs.Append(fmt.Errorf("type mismatch %s for %s at %s", ex.Type(), operand.Type(), a.Pos))
+		operand := errs.Collect(opExpr.Operand.Compile(typeMap))
+		if ex.Type(typeMap) != operand.Type(typeMap) {
+			errs.Append(fmt.Errorf("type mismatch %s for %s at %s", ex.Type(typeMap), operand.Type(typeMap), a.Pos))
 		}
 		operands = append(operands, operand)
 	}
 
-	switch ex.Type() {
-	case TypeFloat:
-		for i, operand := range operands {
-			switch a.Operations[i].Op {
-			case "+":
-				ex = AddFloat{a, ex, operand}
-			case "-":
-				ex = SubtractFloat{a, ex, operand}
-			default:
-				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", a.Operations[i].Op, ex.Type(), a.Pos))
-				return nil, errs
-			}
-		}
-
-	case TypeInteger:
-		for i, operand := range operands {
-			switch a.Operations[i].Op {
-			case "+":
-				ex = AddInteger{a, ex, operand}
-			case "-":
-				ex = SubtractInteger{a, ex, operand}
-			default:
-				errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", a.Operations[i].Op, ex.Type(), a.Pos))
-				return nil, errs
-			}
-		}
-
-	case TypeString:
-		for i, operand := range operands {
-			switch a.Operations[i].Op {
-			case "+":
-				ex = AddString{a, ex, operand}
-			default:
-				errs.Append(fmt.Errorf("invalid type %s for - at %s", ex.Type(), a.Pos))
-				return nil, errs
-			}
-		}
-
-	default:
-		errs.Append(fmt.Errorf("invalid type %s for +, - at %s", ex.Type(), a.Pos))
+	plus := PlusOpMap[ex.Type(typeMap)]
+	minus := MinusOpMap[ex.Type(typeMap)]
+	if plus == nil || minus == nil {
+		errs.Append(fmt.Errorf("invalid type %s for +, - at %s", ex.Type(typeMap), a.Pos))
 		return nil, errs
+	}
+
+	for i, operand := range operands {
+		switch a.Operations[i].Op {
+		case "+":
+			ex = BinaryOperation{plus, ex, operand, ex.Type(typeMap)}
+		case "-":
+			ex = BinaryOperation{minus, ex, operand, ex.Type(typeMap)}
+		default:
+			errs.Append(fmt.Errorf("invalid operator %s for type %s at %s", a.Operations[i].Op, ex.Type(typeMap), a.Pos))
+		}
 	}
 
 	return ex, errs
 }
 
-type AddFloat struct {
-	Addition    *Addition
+type BinaryOperation struct {
+	Func        func(any, any) any
+	Left, Right Executable
+	TypeVal     Type
+}
+
+func (bo BinaryOperation) Execute(ee ExecutionEnvironment) ExecutionResult {
+	return bo.Func(bo.Left.Execute(ee), bo.Right.Execute(ee))
+}
+
+func (bo BinaryOperation) Type(typeMap TypeMap) Type {
+	return bo.TypeVal
+}
+
+type ComparisonOperation struct {
+	Func        func(any, any) BoolValue
 	Left, Right Executable
 }
 
-func (af AddFloat) Execute(ee ExecutionEnvironment) ExecutionResult {
-	return FloatValue(af.Left.Execute(ee).(FloatValue) + af.Right.Execute(ee).(FloatValue))
+func (co ComparisonOperation) Execute(ee ExecutionEnvironment) ExecutionResult {
+	return co.Func(co.Left.Execute(ee), co.Right.Execute(ee))
 }
 
-func (af AddFloat) Type() Type {
-	return TypeFloat
+func (co ComparisonOperation) Type(typeMap TypeMap) Type {
+	return TypeBool
 }
 
-type SubtractFloat struct {
-	Addition    *Addition
+type ShortCircuitAnd struct {
 	Left, Right Executable
 }
 
-func (mf SubtractFloat) Execute(ee ExecutionEnvironment) ExecutionResult {
-	return FloatValue(mf.Left.Execute(ee).(FloatValue) - mf.Right.Execute(ee).(FloatValue))
+// Execute returns the result of the left expression if it is false, otherwise it returns the result of the right expression.
+func (sca ShortCircuitAnd) Execute(ee ExecutionEnvironment) ExecutionResult {
+	leftValue := sca.Left.Execute(ee)
+	if !bool(leftValue.(BoolValue)) {
+		return BoolValue(false)
+	}
+	return sca.Right.Execute(ee)
 }
 
-func (mf SubtractFloat) Type() Type {
-	return TypeFloat
+func (sca ShortCircuitAnd) Type(typeMap TypeMap) Type {
+	return TypeBool
 }
 
-type AddInteger struct {
-	Addition    *Addition
+type ShortCircuitOr struct {
 	Left, Right Executable
 }
 
-func (ai AddInteger) Execute(ee ExecutionEnvironment) ExecutionResult {
-	return IntegerValue(ai.Left.Execute(ee).(IntegerValue) + ai.Right.Execute(ee).(IntegerValue))
+// Execute returns the result of the left expression if it is true, otherwise it returns the result of the right expression.
+func (sco ShortCircuitOr) Execute(ee ExecutionEnvironment) ExecutionResult {
+	leftValue := sco.Left.Execute(ee)
+	if bool(leftValue.(BoolValue)) {
+		return BoolValue(true)
+	}
+	return sco.Right.Execute(ee)
 }
 
-func (ai AddInteger) Type() Type {
-	return TypeInteger
-}
-
-type SubtractInteger struct {
-	Addition    *Addition
-	Left, Right Executable
-}
-
-func (si SubtractInteger) Execute(ee ExecutionEnvironment) ExecutionResult {
-	return IntegerValue(si.Left.Execute(ee).(IntegerValue) - si.Right.Execute(ee).(IntegerValue))
-}
-
-func (si SubtractInteger) Type() Type {
-	return TypeInteger
-}
-
-type AddString struct {
-	Addition    *Addition
-	Left, Right Executable
-}
-
-func (as AddString) Execute(ee ExecutionEnvironment) ExecutionResult {
-	return StringValue(as.Left.Execute(ee).(StringValue) + as.Right.Execute(ee).(StringValue))
-}
-
-func (as AddString) Type() Type {
-	return TypeString
+func (sco ShortCircuitOr) Type(typeMap TypeMap) Type {
+	return TypeBool
 }

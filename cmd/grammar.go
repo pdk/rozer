@@ -146,8 +146,8 @@ func (l List) String() string {
 type Assignment struct {
 	Pos lexer.Position
 
-	Pipe       *Pipe           `parser:"@@"`
-	Operations []*OpAssignment `parser:"@@*"`
+	Pipe      *Pipe         `parser:"@@"`
+	Operation *OpAssignment `parser:"@@?"`
 }
 
 type OpAssignment struct {
@@ -158,14 +158,10 @@ type OpAssignment struct {
 }
 
 func (a Assignment) String() string {
-	if len(a.Operations) == 0 {
+	if a.Operation == nil {
 		return a.Pipe.String()
 	}
-	s := "(" + a.Pipe.String()
-	for _, op := range a.Operations {
-		s += " " + op.Op + " " + op.Operand.String()
-	}
-	return s + ")"
+	return "(" + a.Pipe.String() + " " + a.Operation.Op + " " + a.Operation.Operand.String() + ")"
 }
 
 type Pipe struct {
