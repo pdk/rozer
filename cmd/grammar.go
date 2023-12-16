@@ -71,11 +71,12 @@ type Base struct {
 	// TimeSpan      *string      `parser:"| @TimeSpan"`
 	// Invocation    *Invocation  `parser:"| @@"`
 	// DottedIdent   *DottedIdent `parser:"| @@"`
-	Ident         *string     `parser:"| @Ident"`
-	StringValue   *string     `parser:"| @String"`
-	Subexpression *Expression `parser:"| '(' @@ ')' "`
-	List          *List       `parser:"| @@"`
-	// Lambda        *Lambda      `parser:"| @@"`
+	Ident          *string         `parser:"| @Ident"`
+	StringValue    *string         `parser:"| @String"`
+	Subexpression  *Expression     `parser:"| '(' @@ ')' "`
+	StatementBlock *StatementBlock `parser:"| '{' (EOF|Comment EOL|EOL)* @@ (EOF|Comment EOL|EOL)* '}' "`
+	List           *List           `parser:"| @@"`
+	NamedFunction  *NamedFunction  `parser:"| @@"`
 }
 
 func (b Base) String() string {
@@ -104,13 +105,55 @@ func (b Base) String() string {
 		return "(" + b.Subexpression.String() + ")"
 	case b.List != nil:
 		return b.List.String()
-	// case b.Lambda != nil:
-	// 	return b.Lambdb.String()
 	// case b.Invocation != nil:
 	// 	return b.Invocation.String()
+	case b.StatementBlock != nil:
+		return b.StatementBlock.String()
+	case b.NamedFunction != nil:
+		return b.NamedFunction.String()
 	default:
 		return fmt.Sprintf("*error in Base.String with %#v", b)
 	}
+}
+
+type NamedFunction struct {
+	Pos lexer.Position
+
+	Func   *string  `parser:" Function "`
+	Name   *string  `parser:" @Ident "`
+	Params []string `parser:" '(' @Ident? (',' @Ident)* ')' "`
+
+	Body *StatementBlock `parser:"@@"`
+}
+
+func (f NamedFunction) String() string {
+	s := "fn "
+	if f.Name != nil {
+		s += *f.Name
+	}
+	s += "("
+	for i, param := range f.Params {
+		if i > 0 {
+			s += ", "
+		}
+		s += param
+	}
+	s += ") " + f.Body.String()
+	return s
+}
+
+type StatementBlock struct {
+	Pos lexer.Position
+
+	Statements []*Expression `parser:" (@@ | Comment EOL | EOL)* "`
+}
+
+func (s StatementBlock) String() string {
+	s1 := "{\n"
+	for _, stmt := range s.Statements {
+		s1 += stmt.String() + "\n"
+	}
+	return s1 + "}"
 }
 
 type Expression struct {

@@ -26,6 +26,7 @@ const (
 	TypeString
 	TypeList
 	TypeKeyValue
+	TypeNamedFunction
 	TypeCount
 )
 
@@ -164,11 +165,11 @@ func (ce CompileErrors) Len() int {
 	return len(*ce.errs)
 }
 
-type Block struct {
+type ExecutableBlock struct {
 	Commands []Executable
 }
 
-func (b Block) Execute(ee ExecutionEnvironment) ExecutionResult {
+func (b ExecutableBlock) Execute(ee ExecutionEnvironment) ExecutionResult {
 	var lastResult ExecutionResult
 	for _, c := range b.Commands {
 		lastResult = c.Execute(ee)
@@ -181,7 +182,7 @@ func (b Block) Execute(ee ExecutionEnvironment) ExecutionResult {
 	return lastResult
 }
 
-func (b Block) Type(typeMap TypeMap) Type {
+func (b ExecutableBlock) Type(typeMap TypeMap) Type {
 	return TypeUnknown
 }
 
@@ -281,6 +282,10 @@ func (b *Base) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 		return b.Subexpression.Compile(typeMap)
 	case b.List != nil:
 		return b.List.Compile(typeMap)
+	case b.StatementBlock != nil:
+		return b.StatementBlock.Compile(typeMap)
+	case b.NamedFunction != nil:
+		return b.NamedFunction.Compile(typeMap)
 	}
 
 	return nil, NewError(fmt.Errorf("cannot compile base %#v", b))
@@ -356,6 +361,47 @@ func (u *Unary) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 	}
 
 	return nil, errs.Append(fmt.Errorf("invalid unary operation %s at %s", *u.Op, u.Pos))
+}
+
+func (nf *NamedFunction) Compile(typeMap TypeMap) (Executable, CompileErrors) {
+	var errs CompileErrors
+
+	if nf.Name == nil {
+		return nil, errs.Append(fmt.Errorf("invalid named function at %s", nf.Pos))
+	}
+
+	ex := errs.Collect(nf.Body.Compile(typeMap))
+
+	return NamedFunctionExecute{nf, ex}, errs
+}
+
+type NamedFunctionExecute struct {
+	NamedFunction *NamedFunction
+	Block         Executable
+}
+
+func (nfe NamedFunctionExecute) Execute(ee ExecutionEnvironment) ExecutionResult {
+	// todo: load into global function map
+	return nil
+}
+
+func (nfe NamedFunctionExecute) Type(typeMap TypeMap) Type {
+	return TypeNamedFunction
+}
+
+func (sb *StatementBlock) Compile(typeMap TypeMap) (Executable, CompileErrors) {
+	var errs CompileErrors
+
+	block := ExecutableBlock{}
+
+	for _, e := range sb.Statements {
+		if e != nil {
+			ex := errs.Collect(e.Compile(typeMap))
+			block.Commands = append(block.Commands, ex)
+		}
+	}
+
+	return block, errs
 }
 
 func (m *Multiplication) Compile(typeMap TypeMap) (Executable, CompileErrors) {
@@ -718,7 +764,7 @@ func (e Expression) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 func (p Program) Compile(typeMap TypeMap) (Executable, CompileErrors) {
 	var errs CompileErrors
 
-	block := Block{}
+	block := ExecutableBlock{}
 
 	for _, c := range p.Commands {
 		if c != nil && c.Expression != nil {

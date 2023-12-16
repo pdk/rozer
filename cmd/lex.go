@@ -95,8 +95,8 @@ var (
 			Pattern: `"(\\"|[^"])*"`,
 		},
 		{
-			Name:    "Func",
-			Pattern: `func`,
+			Name:    "Function",
+			Pattern: `fn`,
 		},
 		{
 			Name:    "FTail",
