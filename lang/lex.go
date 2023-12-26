@@ -1,14 +1,22 @@
-package main
+package lang
 
 import (
 	"github.com/alecthomas/participle/v2/lexer"
 )
 
 var (
-	pipelineLexer = lexer.MustSimple([]lexer.SimpleRule{
+	PipelineLexer = lexer.MustSimple([]lexer.SimpleRule{
+		{
+			Name:    "Scriptor",
+			Pattern: `^#![^\n]*`,
+		},
 		{
 			Name:    "Comment",
-			Pattern: `#[^\n]*`,
+			Pattern: `//[^\n]*`,
+		},
+		{
+			Name:    "DotDot",
+			Pattern: `\.\.`,
 		},
 		{
 			Name:    "AndAnd",
@@ -103,8 +111,12 @@ var (
 			Pattern: `ƒ`,
 		},
 		{
+			Name:    "Tag",
+			Pattern: `#[a-zA-Z0-9_][a-zA-Z0-9_-]*`,
+		},
+		{
 			Name:    "Ident",
-			Pattern: `[a-zA-Z_]\w*`,
+			Pattern: `[a-zA-Z_\$]\w*`,
 		},
 		{
 			Name:    "Punct",

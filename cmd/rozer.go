@@ -6,13 +6,13 @@ import (
 	"log"
 	"os"
 
-	"github.com/alecthomas/kong"
 	"github.com/alecthomas/participle/v2"
+	"github.com/pdk/rozer/lang"
 )
 
 var (
-	basicParser = participle.MustBuild[Program](
-		participle.Lexer(pipelineLexer),
+	basicParser = participle.MustBuild[lang.Program](
+		participle.Lexer(lang.PipelineLexer),
 		participle.CaseInsensitive("Ident"),
 		participle.Unquote("String"),
 		participle.UseLookahead(4),
@@ -23,7 +23,7 @@ var (
 	}
 )
 
-func Parse(r io.Reader) (*Program, error) {
+func Parse(r io.Reader) (*lang.Program, error) {
 	program, err := basicParser.Parse("", r)
 	if err != nil {
 		return nil, err
@@ -32,28 +32,45 @@ func Parse(r io.Reader) (*Program, error) {
 }
 
 func main() {
-	ctx := kong.Parse(&cli)
-	r, err := os.Open(cli.File)
-	ctx.FatalIfErrorf(err)
+	// ctx := kong.Parse(&cli)
+	// r, err := os.Open(cli.File)
+	// ctx.FatalIfErrorf(err)
+	// defer r.Close()
+
+	r, err := os.Open("/Users/pdk/src/rozer/short.roz")
+	if err != nil {
+		log.Fatal(err)
+	}
 	defer r.Close()
+
 	program, err := Parse(r)
-	ctx.FatalIfErrorf(err)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// repr.Println(program)
 	fmt.Printf("%s", program.String())
 
-	globalTypeMap := TypeMap{}
+	globalTypeMap := lang.TypeMap{}
 
-	executable, errors := program.Compile(globalTypeMap)
+	log.Printf("compiling...")
+	executableProgram, errors := program.Compile(globalTypeMap)
 
 	if errors.Len() > 0 {
 		log.Printf("errors found during compilation:")
-		for _, err := range *errors.errs {
+		for _, err := range *errors.Errs {
 			log.Printf("error: %s", err)
 		}
 		os.Exit(1)
 	}
 
-	execEnv := ExecutionEnvironment{}
-	executable.Execute(execEnv)
+	// log.Printf("here are the functions: ")
+	// executableProgram.DumpFunctions()
+
+	// log.Printf("here is the program: ")
+	// executableProgram.DumpProgram()
+
+	log.Printf("executing...")
+
+	executableProgram.ExecuteProgram()
 }
